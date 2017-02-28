@@ -1,4 +1,5 @@
 # this script handles the logic of datacenter
+
 import json
 import bisect
 from threading import Lock
@@ -12,10 +13,16 @@ class LogEntry(object):
     """
     The log entry
     """
-    def __init__(self, term=0, index=0, command=None):
-        self.term = term
-        self.index = index
-        self.command = command
+    def __init__(self, term, index=None, command=None):
+        if index is None:
+            self.term, self.index, self.command = term
+        else:
+            self.term = term
+            self.index = index
+            self.command = command
+
+    def getVals(self):
+        return self.term, self.index, self.command
 
 
 class datacenter(object):
@@ -41,7 +48,7 @@ class datacenter(object):
 
         # keep a list of log entries
         # put a dummy entry in front
-        self.log = [LogEntry()]
+        self.log = [LogEntry(0, 0)]
 
         # record the index of the latest comitted entry
         # 0 means the dummy entry is already comitted
@@ -104,12 +111,11 @@ class datacenter(object):
         self.votes = [self.datacenter_id]
 
         logging.debug('DC-{} become candidate for term {}'
-                      .format(self.datacenter_id, self.current_term))
+                      .format(self.current_term))
 
         # send RequestVote to all other servers
         # (index & term of last log entry)
-        self.server.requestVote(self.datacenter_id,
-                                self.current_term, *self.getLatest())
+        self.server.requestVote(self.current_term, *self.getLatest())
 
     def handleRequestVote(self, candidate_id, candidate_term,
                           candidate_log_term, candidate_log_index):
@@ -121,8 +127,8 @@ class datacenter(object):
         :type candidate_log_index: int
         """
         if candidate_term < self.current_term:
-            self.server.requestVoteReply(self.datacenter_id,
-                                         self.current_term, False)
+            self.server.requestVoteReply(
+                candidate_id, self.current_term, False)
             return
         if candidate_term > self.current_term:
             self.current_term = candidate_term
@@ -136,8 +142,8 @@ class datacenter(object):
             logging.debug('DC-{} voted for DC-{} in term {}'
                           .format(self.datacenter_id,
                                   candidate_id, self.current_term))
-        self.server.requestVoteReply(self.datacenter_id,
-                                     self.current_term, grant_vote)
+        self.server.requestVoteReply(
+            candidate_id, self.current_term, grant_vote)
 
     def becomeLeader(self):
         """
@@ -201,8 +207,7 @@ class datacenter(object):
         :type center_id: str
         """
         prevEntry = self.logs[self.nextIndices[center_id]-1]
-        self.server.appendEntry(center_id,
-                                self.datacenter_id, self.current_term,
+        self.server.appendEntry(center_id, self.current_term,
                                 prevEntry.index, prevEntry.term,
                                 self.logs[self.nextIndices[center_id]:],
                                 self.commit_idx)
@@ -246,6 +251,10 @@ class datacenter(object):
         self.loggedIndices[follower_id] = follower_last_index
         # find out the index most followers have reached
         majority_idx = sorted(self.loggedIndices)[len(self.datacenters)/2-1]
+        # commit entries only when at least one entry in current term
+        # has reached majority
+        if self.log[majority_idx].term != self.current_term:
+            return
         # if we have something to commit
         # if majority_idx < self.commit_idx, do nothing
         map(self.commitEntry, self.log[self.commit_idx+1:majority_idx+1])
@@ -304,7 +313,6 @@ class datacenter(object):
         # nextIndices record
         # if failed, reply index of highest possible match:
         #  leader_prev_log_idx-1
-        self.server.appendEntryReply(self.datacenter_id,
-                                     self.current_term, success,
+        self.server.appendEntryReply(leader_id, self.current_term, success,
                                      self.getLatest()[1] if success
                                      else leader_prev_log_idx-1)
