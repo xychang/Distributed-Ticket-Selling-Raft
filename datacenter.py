@@ -111,6 +111,7 @@ class datacenter(object):
         self.resetElectionTimeout()
         self.current_term += 1
         self.votes = [self.datacenter_id]
+        self.voted_for = self.datacenter_id
 
         #logging.debug('DC-{} become candidate for term {}'.format(self.current_term))
 
@@ -197,7 +198,7 @@ class datacenter(object):
                           .format(self.datacenter_id,
                                   self.current_term, self.votes))
 
-            if len(self.votes) > len(self.datacenters)/2:
+            if not self.isLeader() and len(self.votes) > len(self.datacenters)/2:
                 self.becomeLeader()
         else:
             if follower_term > self.current_term:

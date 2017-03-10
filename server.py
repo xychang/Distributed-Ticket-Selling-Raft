@@ -111,6 +111,7 @@ class server(object):
         # messages from servers
         # 1. requestVote RPC
         if message_type == 'REQ_VOTE':
+            logging.info("handling {0}. {1}".format(message_type, content))
             candidate_id, candidate_term, candidate_log_term,\
                 candidate_log_index = content.split(',')
             self.dc.handleRequestVote(
@@ -118,6 +119,7 @@ class server(object):
                 int(candidate_log_term), int(candidate_log_index))
         # 2. requestVoteReply RPC
         elif message_type == 'REQ_VOTE_REPLY':
+            logging.info("handling {0}. {1}".format(message_type, content))
             follower_id, follower_term, vote_granted \
                 = content.split(',')
             self.dc.handleRequestVoteReply(
@@ -125,9 +127,11 @@ class server(object):
                 vote_granted == 'True')
         # 3. appendEntry RPC
         elif message_type == 'APPEND':
+            logging.info("handling {0}. {1}".format(message_type, content))
             leader_id, leader_term, leader_prev_log_idx,\
                 leader_prev_log_term, entries, leader_commit_idx =\
                 content.split(',')
+            logging.debug("handling {0}. {1}".format(message_type, content))
             self.dc.handleAppendEntry(
                 leader_id, int(leader_term),
                 int(leader_prev_log_idx),
@@ -138,6 +142,7 @@ class server(object):
         elif message_type == 'APPEND_REPLY':
             follower_id, follower_term, success, \
                 follower_last_index = content.split(',')
+            logging.debug("handling {0}. {1}".format(message_type, content))
             self.dc.handleAppendEntryReply(
                 follower_id, int(follower_term),
                 success == 'True',
@@ -177,7 +182,6 @@ class server(object):
                 msg, address = self.listener.recvfrom(4096)
                 # logging.info("Connection from %s" % str(address))
                 for line in msg.split('\n'):
-                    logging.info("handling message. {0}".format(line))
                     if len(line) == 0: continue
                     try:
                         self.handleIncommingMessage(*line.split(':'))
