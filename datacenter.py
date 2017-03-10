@@ -39,7 +39,7 @@ class datacenter(object):
         self.datacenter_id = datacenter_id
         self.datacenters = CONFIG['datacenters']
         # update the datacenters, so that the id and port are all int
-        self.datacenters = dict([(int(x), y) for x, y in self.datacenters.items()])
+        # self.datacenters = dict([(x, y) for x, y in self.datacenters.items()])
         self.total_ticket = CONFIG['total_ticket']
 
         self.current_term = 0
@@ -74,7 +74,8 @@ class datacenter(object):
         """
         reset heartbeat timeout
         """
-        self.heartbeat_timer.cancel()
+        if self.heartbeat_timer:
+            self.heartbeat_timer.cancel()
         self.heartbeat_timer = Timer(self.heartbeat_timeout, self.sendHeartbeat)
         self.heartbeat_timer.start()
 
@@ -115,7 +116,8 @@ class datacenter(object):
 
         # send RequestVote to all other servers
         # (index & term of last log entry)
-        self.server.requestVote(self.current_term, self.getLatest())
+        self.server.requestVote(self.current_term, self.getLatest()[0], \
+                                self.getLatest()[1])
 
     def handleRequestVote(self, candidate_id, candidate_term,
                           candidate_log_term, candidate_log_index):
@@ -155,15 +157,16 @@ class datacenter(object):
         # no need to wait for heartbeat anymore
         self.election_timer.cancel()
 
-        self.sendHeartbeat()
         self.role = 'leader'
         self.leader_id = self.datacenter_id
-        # initialize a record of nextIdx
-        self.nextIndices = dict([(center_id, self.getLatest()[1]+1)
-                                 for center_id in self.datacenters])
         # keep track of the entries known to be logged in each data center
         self.loggedIndices = dict([(center_id, 0)
                                    for center_id in self.datacenters])
+        # initialize a record of nextIdx
+        self.nextIndices = dict([(center_id, self.getLatest()[1]+1)
+                                 for center_id in self.datacenters])
+
+        self.sendHeartbeat()
         self.heartbeat_timer = Timer(self.heartbeat_timeout, self.sendHeartbeat)
         self.heartbeat_timer.start()
 
@@ -206,10 +209,10 @@ class datacenter(object):
         send an append entry message to the specified datacenter
         :type center_id: str
         """
-        prevEntry = self.logs[self.nextIndices[center_id]-1]
+        prevEntry = self.log[self.nextIndices[center_id]-1]
         self.server.appendEntry(center_id, self.current_term,
                                 prevEntry.index, prevEntry.term,
-                                self.logs[self.nextIndices[center_id]:],
+                                self.log[self.nextIndices[center_id]:],
                                 self.commit_idx)
 
     def sendHeartbeat(self):
@@ -250,7 +253,7 @@ class datacenter(object):
         # committed entries
         self.loggedIndices[follower_id] = follower_last_index
         # find out the index most followers have reached
-        majority_idx = sorted(self.loggedIndices)[len(self.datacenters)/2-1]
+        majority_idx = sorted(self.loggedIndices.values())[len(self.datacenters)/2-1]
         # commit entries only when at least one entry in current term
         # has reached majority
         if self.log[majority_idx].term != self.current_term:
