@@ -1,5 +1,8 @@
 # this script handles the message passing of raft
 import json
+import os, sys
+import logging
+from socket import *
 import datacenter
 from threading import Timer
 
@@ -18,18 +21,18 @@ class server(object):
         self.ip = gethostbyname('')
         self.port = port
         self.center_id = center_id
-        logging.info('DC-{} server running at {:s}:{:4d}'
-                     .format(self.id, self.ip, self.port))
+        print('DC-{} server running at {:s}:{:4d}'
+                     .format(self.center_id, self.ip, self.port))
         try:
             self.listener = socket(AF_INET, SOCK_STREAM)
             self.listener.bind((self.ip, self.port))
             self.listener.listen(5) # Max connections
-            logging.info('DC-{} listener start successfully...'
-                         .format(self.id))
+            print('DC-{} listener start successfully...'
+                         .format(self.center_id))
         except Exception as e:
             # socket create fail
             logging.warning("Socket create fail.{0}".format(e))
-        self.dc = datacenter(center_id, self)
+        self.dc = datacenter.datacenter(self.center_id, self)
         self.waitConnection()
 
     def sendMessage(self, target_meta, message):
@@ -39,7 +42,12 @@ class server(object):
         :type target_meta: e.g. { "port": 12348 }
         :type message: str
         """
-        pass
+        peer_socket = socket(AF_INET, SOCK_STREAM)
+        host = ''
+        port = target_meta["port"]
+        addr = (host, port)
+        peer_socket.connect(addr)
+        peer_socket.send(message)
 
     def requestVote(self, current_term, latest_log_term):
         # broadcast the requestVote message to all other datacenters
@@ -128,10 +136,18 @@ class server(object):
                 follower_id, int(follower_term),
                 success == 'True',
                 int(follower_last_index))
+
+        elif message_type == 'BUY':
+            #test
+            for center_id in self.dc.datacenters:
+                if center_id != self.center_id:
+                    self.sendMessage(self.dc.datacenters[center_id], content)
         # messages from clients
         # 1. buy
         # 2. show
         # 3. change
+    
+
 
     def waitConnection(self):
         '''
@@ -146,9 +162,19 @@ class server(object):
                 logging.debug('Connection from {address} connected!'
                               .format(address=addr))
                 msg = conn.recv(1024)
+                print msg
                 for line in msg.split('\n'):
                     if len(line) == 0: continue
-                    handleIncommingMessage(*line.split(':'))
+                    self.handleIncommingMessage(*line.split(':'))
 
             except Exception as e:
                 logging.error('Error with incomming connection. {0}'.format(e))
+
+def main():
+    print("Start datacenter...")
+    datacenter_cfg = CONFIG['datacenters']
+    port = datacenter_cfg[sys.argv[1]]['port']
+    Server = server(sys.argv[1], port)
+
+if __name__ == "__main__":
+    main()
