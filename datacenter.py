@@ -113,7 +113,8 @@ class datacenter(object):
         self.votes = [self.datacenter_id]
         self.voted_for = self.datacenter_id
 
-        #logging.debug('DC-{} become candidate for term {}'.format(self.current_term))
+        logging.debug('DC-{} become candidate for term {}'
+                      .format(self.datacenter_id, self.current_term))
 
         # send RequestVote to all other servers
         # (index & term of last log entry)
@@ -243,9 +244,10 @@ class datacenter(object):
         if not self.isLeader(): return
         # if the leader is still in it's term
         # adjust nextIndices for follower
-        self.nextIndices[follower_id] = follower_last_index + 1
-        logging.debug('update nextIndex of {} to {}'
-                      .format(follower_id, follower_last_index + 1))
+        if self.nextIndices[follower_id] != follower_last_index + 1:
+            self.nextIndices[follower_id] = follower_last_index + 1
+            logging.debug('update nextIndex of {} to {}'
+                          .format(follower_id, follower_last_index + 1))
         if not success:
             self.sendAppendEntry(follower_id)
             return
