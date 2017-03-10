@@ -24,9 +24,9 @@ class server(object):
         print('DC-{} server running at {:s}:{:4d}'
                      .format(self.center_id, self.ip, self.port))
         try:
-            self.listener = socket(AF_INET, SOCK_STREAM)
+            self.listener = socket(AF_INET, SOCK_DGRAM)
             self.listener.bind((self.ip, self.port))
-            self.listener.listen(5) # Max connections
+            #self.listener.listen(5) # Max connections
             print('DC-{} listener start successfully...'
                          .format(self.center_id))
         except Exception as e:
@@ -42,12 +42,13 @@ class server(object):
         :type target_meta: e.g. { "port": 12348 }
         :type message: str
         """
-        peer_socket = socket(AF_INET, SOCK_STREAM)
+        peer_socket = socket(AF_INET, SOCK_DGRAM)
         host = ''
         port = target_meta["port"]
         addr = (host, port)
-        peer_socket.connect(addr)
-        peer_socket.send(message)
+        sent = peer_socket.sendto(message, addr)
+        # peer_socket.connect(addr)
+        #self.all_socket[port].send(message)
 
     def requestVote(self, current_term, latest_log_term):
         # broadcast the requestVote message to all other datacenters
@@ -140,7 +141,13 @@ class server(object):
         elif message_type == 'BUY':
             #test
             for center_id in self.dc.datacenters:
-                if center_id != self.center_id:
+                if int(center_id) != int(self.center_id):
+                    # target_meta = self.dc.datacenters[center_id]
+                    # port = target_meta["port"]
+                    # self.all_socket[port] = socket(AF_INET, SOCK_STREAM)
+                    # host = ''
+                    # addr = (host, port)
+                    # self.all_socket[port].connect(addr)
                     self.sendMessage(self.dc.datacenters[center_id], content)
         # messages from clients
         # 1. buy
@@ -158,11 +165,12 @@ class server(object):
         num = 0
         while True:
             try:
-                conn, addr = self.listener.accept()
-                logging.debug('Connection from {address} connected!'
-                              .format(address=addr))
-                msg = conn.recv(1024)
-                print msg
+                # conn, addr = self.listener.accept()
+                # logging.debug('Connection from {address} connected!'
+                #               .format(address=addr))
+                # msg = conn.recv(1024)
+                msg, address = self.listener.recvfrom(4096)
+                print("Connection from %s" %address)
                 for line in msg.split('\n'):
                     if len(line) == 0: continue
                     self.handleIncommingMessage(*line.split(':'))

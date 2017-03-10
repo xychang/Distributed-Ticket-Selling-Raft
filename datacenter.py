@@ -99,7 +99,7 @@ class datacenter(object):
         """
         get term and index of latest entry in log
         """
-        return self.log[-1].term, self.log[-1].index
+        return (self.log[-1].term, self.log[-1].index)
 
     def startElection(self):
         """
@@ -111,12 +111,11 @@ class datacenter(object):
         self.current_term += 1
         self.votes = [self.datacenter_id]
 
-        logging.debug('DC-{} become candidate for term {}'
-                      .format(self.current_term))
+        #logging.debug('DC-{} become candidate for term {}'.format(self.current_term))
 
         # send RequestVote to all other servers
         # (index & term of last log entry)
-        self.server.requestVote(self.current_term, *self.getLatest())
+        self.server.requestVote(self.current_term, self.getLatest())
 
     def handleRequestVote(self, candidate_id, candidate_term,
                           candidate_log_term, candidate_log_index):

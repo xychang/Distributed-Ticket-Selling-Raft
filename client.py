@@ -10,12 +10,12 @@ import time
 CONFIG = json.load(open('config.json'))
 
 def Request(port, buy_num):
-	c = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	c = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	host = ''
-	c.connect((host, port))
-	c.sendall(str(buy_num))
+	addr = (host, port)
+	sent = c.sendto(str(buy_num), addr)
 	time.sleep(2)
-	print c.recv(1024)
+	data, server = c.recvfrom(4096)
 	c.close()
 
 
