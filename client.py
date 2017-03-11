@@ -45,33 +45,32 @@ def RequestChange(port, c):
 def Interface_cmd(c):
     choice = True
     request_id = 0
+    datacenter = CONFIG['datacenters']
+    datacenter_list = []
+    for i in range(1, len(datacenter)+1):
+        datacenter_list.append(datacenter[str(i)]['port'])
+        print('datacenter: '+ str(datacenter[str(i)]['port']))
+    cmd = raw_input('Please choose a server to connect... or exit...\t')
+    if cmd.startswith('exit'):
+        choice = False
+    else:
+        server_selected = int(cmd)
     while choice:
-        datacenter = CONFIG['datacenters']
-        datacenter_list = []
-        for i in range(1, len(datacenter)+1):
-            datacenter_list.append(datacenter[str(i)]['port'])
-            print('datacenter: '+ str(datacenter[str(i)]['port']))
+        
+        command = raw_input('Command: buy {numberOfTicket} / show / change {param1, param2} / exit?\t')
 
-        cmd = raw_input('Please choose a server to connect... or Press N to exit...\t')
-        if cmd == 'N':
-            choice = False
-            break
-        else:
-            server_selected = int(cmd)
-            if server_selected not in datacenter_list:
-                print('Invalid input')
-                continue
-
-            command = raw_input('Command: buy {numberOfTicket} / show / change {param1, param2}?\t')
-
-            if command.startswith('buy'):
-                RequestTicket(server_selected, int(command.lstrip('buy ')),
+        if command.startswith('buy'):
+            RequestTicket(server_selected, int(command.lstrip('buy ')),
                               request_id, c)
-                request_id += 1
-            elif command.startswith('show'):
-                RequestShow(server_selected, c)
-            elif command.startswith('change'):
-                RequestChange(server_selected, command.lstrip('change '), c)
+            request_id += 1
+        elif command.startswith('show'):
+            RequestShow(server_selected, c)
+        elif command.startswith('change'):
+            RequestChange(server_selected, command.lstrip('change '), c)
+        elif command.startswith('exit'):
+            break
+        time.sleep(5)
+            
 
 
 
