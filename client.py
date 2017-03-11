@@ -38,9 +38,9 @@ def RequestTicket(port, buy_num, request_id, c):
 def RequestShow(port, c):
     Request(port, 'SHOW:\n', c)
 
-def RequestChange(port, new_config, c):
+def RequestChange(port, c):
     # TODO: add functionality for config change
-    Request(port, 'CHANGE:%s\n' % new_config, c)
+    Request(port, 'CHANGE:XXXX\n', c)
 
 def Interface_cmd(c):
     choice = True
@@ -56,23 +56,8 @@ def Interface_cmd(c):
     else:
         server_selected = int(cmd)
     while choice:
-        datacenter = CONFIG['datacenters']
-        datacenter_list = []
-        for i in range(1, len(datacenter)+1):
-            datacenter_list.append(datacenter[str(i)]['port'])
-            print('datacenter: '+ str(datacenter[str(i)]['port']))
-
-        cmd = raw_input('Please choose a server to connect... or Press N to exit...\t')
-        if cmd == 'N':
-            choice = False
-            break
-        else:
-            server_selected = int(cmd)
-            # if server_selected not in datacenter_list:
-            #     print('Invalid input')
-            #     continue
-
-            command = raw_input('Command: buy {numberOfTicket} / show / change {param1, param2} / exit?\t')
+        
+        command = raw_input('Command: buy {numberOfTicket} / show / change {param1, param2} / exit?\t')
 
         if command.startswith('buy'):
             RequestTicket(server_selected, int(command.lstrip('buy ')),
