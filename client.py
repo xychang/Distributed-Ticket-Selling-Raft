@@ -9,11 +9,18 @@ import time
 
 CONFIG = json.load(open('config.json'))
 
-def Request(port, buy_num):
+client_id = sys.argv[1]
+
+def Request(port, buy_num, request_id):
 	c = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	host = ''
 	addr = (host, port)
-	sent = c.sendto(str(buy_num), addr)
+	message = ('BUY:"{client_id}",{request_id},' +
+               '{ticket_count}').format(
+                           client_id=client_id,
+                           request_id=request_id,
+                           ticket_count=buy_num)
+	sent = c.sendto(message, addr)
 	time.sleep(2)
 	data, server = c.recvfrom(4096)
 	c.close()
@@ -22,6 +29,7 @@ def Request(port, buy_num):
 
 def Interface_cmd():
 	choice = True
+	request_id = 0
 	while choice:
 		datacenter = CONFIG['datacenters']
 		datacenter_list = []
@@ -42,7 +50,8 @@ def Interface_cmd():
 			buy_num = raw_input('Command: Buy/ Change/ Show?\t')
 			
 
-			Request(server_selected, buy_num)
+			Request(server_selected, buy_num, request_id)
+			request_id += 1
 			
 
 

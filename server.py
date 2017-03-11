@@ -47,6 +47,7 @@ class server(object):
         host = ''
         port = target_meta["port"]
         addr = (host, port)
+        logging.debug("{0} <-- {1}".format(target_meta['port'], message))
         sent = peer_socket.sendto(message, addr)
         # peer_socket.connect(addr)
         #self.all_socket[port].send(message)
@@ -54,7 +55,7 @@ class server(object):
     def requestVote(self, current_term, latest_log_term, latest_log_index):
         # broadcast the requestVote message to all other datacenters
         def sendMsg():
-            message = ('REQ_VOTE:{datacenter_id},' +
+            message = ('REQ_VOTE:"{datacenter_id}",' +
                        '{current_term},{latest_log_term},' +
                        '{latest_log_index}\n').format(
                 datacenter_id=self.center_id,
@@ -70,18 +71,18 @@ class server(object):
     def requestVoteReply(self, target_id, current_term, grant_vote):
         # send reply to requestVote message
         def sendMsg():
-            message = ('REQ_VOTE_REPLY:{datacenter_id},' +
+            message = ('REQ_VOTE_REPLY:"{datacenter_id}",' +
                        '{current_term},{grant_vote}').format(
                         datacenter_id=self.center_id,
                         current_term=current_term,
-                        grant_vote=grant_vote)
+                        grant_vote=json.dumps(grant_vote))
             self.sendMessage(self.dc.datacenters[target_id], message)
         Timer(CONFIG['messageDelay'], sendMsg).start()
 
     def appendEntry(self, target_id, current_term, prev_log_idx,
                     prev_log_term, entries, commit_idx):
         def sendMsg():
-            message = ('APPEND:{datacenter_id},{current_term},' +
+            message = ('APPEND:"{datacenter_id}",{current_term},' +
                        '{prev_log_idx},{prev_log_term},{entries},' +
                        '{commit_idx}').format(
                            datacenter_id=self.center_id,
@@ -96,11 +97,11 @@ class server(object):
     def appendEntryReply(self, target_id, current_term, success,
                          follower_last_index):
         def sendMsg():
-            message = ('APPEND_REPLY:{datacenter_id},{current_term},' +
+            message = ('APPEND_REPLY:"{datacenter_id}",{current_term},' +
                        '{success},{follower_last_index}').format(
                            datacenter_id=self.center_id,
                            current_term=current_term,
-                           success=success,
+                           success=json.dumps(success),
                            follower_last_index=follower_last_index)
             self.sendMessage(self.dc.datacenters[target_id], message)
         Timer(CONFIG['messageDelay'], sendMsg).start()
@@ -111,56 +112,45 @@ class server(object):
         # messages from servers
         # 1. requestVote RPC
         if message_type == 'REQ_VOTE':
-            logging.info("handling {0}. {1}".format(message_type, content))
-            candidate_id, candidate_term, candidate_log_term,\
-                candidate_log_index = content.split(',')
-            self.dc.handleRequestVote(
-                candidate_id, int(candidate_term),
-                int(candidate_log_term), int(candidate_log_index))
+            logging.info("--> {0}. {1}".format(message_type, content))
+            self.dc.handleRequestVote(*json.loads('[%s]' % content))
         # 2. requestVoteReply RPC
         elif message_type == 'REQ_VOTE_REPLY':
-            logging.info("handling {0}. {1}".format(message_type, content))
+            logging.info("--> {0}. {1}".format(message_type, content))
             follower_id, follower_term, vote_granted \
-                = content.split(',')
-            self.dc.handleRequestVoteReply(
-                follower_id, int(follower_term),
-                vote_granted == 'True')
+                = json.loads('[%s]' % content)
+            self.dc.handleRequestVoteReply(*json.loads('[%s]' % content))
         # 3. appendEntry RPC
         elif message_type == 'APPEND':
-            logging.info("handling {0}. {1}".format(message_type, content))
+            logging.debug("--> {0}. {1}".format(message_type, content))
             leader_id, leader_term, leader_prev_log_idx,\
                 leader_prev_log_term, entries, leader_commit_idx =\
-                content.split(',')
-            logging.debug("handling {0}. {1}".format(message_type, content))
+                json.loads('[%s]' % content)
             self.dc.handleAppendEntry(
-                leader_id, int(leader_term),
-                int(leader_prev_log_idx),
-                int(leader_prev_log_term),
-                map(datacenter.LogEntry, json.loads(entries)),
-                int(leader_commit_idx))
+                leader_id, leader_term,
+                leader_prev_log_idx,
+                leader_prev_log_term,
+                map(datacenter.LogEntry, entries),
+                leader_commit_idx)
         # 4. appendEntryReply RPC
         elif message_type == 'APPEND_REPLY':
-            follower_id, follower_term, success, \
-                follower_last_index = content.split(',')
-            logging.debug("handling {0}. {1}".format(message_type, content))
-            self.dc.handleAppendEntryReply(
-                follower_id, int(follower_term),
-                success == 'True',
-                int(follower_last_index))
-
-        elif message_type == 'BUY':
-            #test
-            for center_id in self.dc.datacenters:
-                if center_id != self.center_id:
-                    # target_meta = self.dc.datacenters[center_id]
-                    # port = target_meta["port"]
-                    # self.all_socket[port] = socket(AF_INET, SOCK_STREAM)
-                    # host = ''
-                    # addr = (host, port)
-                    # self.all_socket[port].connect(addr)
-                    self.sendMessage(self.dc.datacenters[center_id], content)
+            logging.debug("--> {0}. {1}".format(message_type, content))
+            self.dc.handleAppendEntryReply(*json.loads('[%s]' % content))
         # messages from clients
         # 1. buy
+        elif message_type == 'BUY':
+            #test
+            # for center_id in self.dc.datacenters:
+            #     if center_id != self.center_id:
+            #         # target_meta = self.dc.datacenters[center_id]
+            #         # port = target_meta["port"]
+            #         # self.all_socket[port] = socket(AF_INET, SOCK_STREAM)
+            #         # host = ''
+            #         # addr = (host, port)
+            #         # self.all_socket[port].connect(addr)
+            #         self.sendMessage(self.dc.datacenters[center_id], content)
+            logging.debug("--> {0}. {1}".format(message_type, content))
+            self.dc.handleBuy(*json.loads('[%s]' % content))
         # 2. show
         # 3. change
 
@@ -184,7 +174,7 @@ class server(object):
                 for line in msg.split('\n'):
                     if len(line) == 0: continue
                     try:
-                        self.handleIncommingMessage(*line.split(':'))
+                        self.handleIncommingMessage(*line.split(':', 1))
                     except Exception as e:
                         logging.error('Error with incomming message. {0} {1}'
                                       .format(e, line))

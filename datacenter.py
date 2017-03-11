@@ -22,6 +22,9 @@ class LogEntry(object):
             self.index = index
             self.command = command
 
+    def __str__(self):
+        return '%s,%s,%s' % (self.term, self.index, self.command)
+
     def getVals(self):
         return self.term, self.index, self.command
 
@@ -121,6 +124,21 @@ class datacenter(object):
         self.server.requestVote(self.current_term, self.getLatest()[0], \
                                 self.getLatest()[1])
 
+    def handleBuy(self, client_id, request_id, ticket_count):
+        """
+        Handle the request to buy ticket,
+        for now, don't update state machine yet, just add an entry to log
+        :type client_id: str
+        :type request_id: int
+        :type ticket_count: int
+        """
+        if self.isLeader():
+            self.log.append(LogEntry(self.current_term, len(self.log),
+                                     {'client_id': client_id,
+                                      'request_id': request_id,
+                                      'ticket_count': ticket_count}))
+            self.sendHeartbeat()
+
     def handleRequestVote(self, candidate_id, candidate_term,
                           candidate_log_term, candidate_log_index):
         """
@@ -163,10 +181,12 @@ class datacenter(object):
         self.leader_id = self.datacenter_id
         # keep track of the entries known to be logged in each data center
         self.loggedIndices = dict([(center_id, 0)
-                                   for center_id in self.datacenters])
+                                   for center_id in self.datacenters
+                                   if center_id != self.datacenter_id])
         # initialize a record of nextIdx
         self.nextIndices = dict([(center_id, self.getLatest()[1]+1)
-                                 for center_id in self.datacenters])
+                                 for center_id in self.datacenters
+                                 if center_id != self.datacenter_id])
 
         self.sendHeartbeat()
         self.heartbeat_timer = Timer(self.heartbeat_timeout, self.sendHeartbeat)
@@ -256,7 +276,9 @@ class datacenter(object):
         # committed entries
         self.loggedIndices[follower_id] = follower_last_index
         # find out the index most followers have reached
-        majority_idx = sorted(self.loggedIndices.values())[len(self.datacenters)/2-1]
+        majority_idx = sorted(self.loggedIndices.values())[(len(self.datacenters)-1)/2]
+        logging.debug('the index logged by majority is {0}'
+                      .format(majority_idx))
         # commit entries only when at least one entry in current term
         # has reached majority
         if self.log[majority_idx].term != self.current_term:
@@ -265,8 +287,15 @@ class datacenter(object):
         # if majority_idx < self.commit_idx, do nothing
         map(self.commitEntry, self.log[self.commit_idx+1:majority_idx+1])
         if majority_idx != self.commit_idx:
-            logging.debug('log committed upto {}'.format(majority_idx))
+            logging.info('log committed upto {}'.format(majority_idx))
         self.commit_idx = max(self.commit_idx, majority_idx)
+
+    def commitEntry(self, entry):
+        """
+        commit a log entry
+        :type entry: LogEntry
+        """
+        logging.info('entry comitted! {}'.format(entry))
 
     def handleAppendEntry(self, leader_id, leader_term, leader_prev_log_idx,
                           leader_prev_log_term, entries, leader_commit_idx):
@@ -304,7 +333,7 @@ class datacenter(object):
                 for entry in entries:
                     logging.debug('DC-{} adding {} to log'
                                   .format(self.datacenter_id, entry))
-                    self.log.append(LogEntry(entry.term, entry.index))
+                    self.log.append(entry)
                 # check the leader's committed idx
                 if leader_commit_idx > self.commit_idx:
                     map(self.commitEntry,
