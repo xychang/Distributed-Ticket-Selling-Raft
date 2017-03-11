@@ -138,6 +138,18 @@ class datacenter(object):
                                       'request_id': request_id,
                                       'ticket_count': ticket_count}))
             self.sendHeartbeat()
+        else:
+            # if there is a current leader, then send the request to
+            # the leader, otherwise, ignore the request, the client
+            # will eventually retry
+            message = ('BUY:"{client_id}",{request_id},' +
+                       '{ticket_count}').format(
+                                client_id=client_id,
+                                request_id=request_id,
+                                ticket_count=ticket_count)
+            if self.leader_id:
+                self.server.sendMessage(self.datacenters[self.leader_id],
+                                        message)
 
     def handleRequestVote(self, candidate_id, candidate_term,
                           candidate_log_term, candidate_log_index):
@@ -154,13 +166,12 @@ class datacenter(object):
             return
         if candidate_term > self.current_term:
             self.current_term = candidate_term
-            self.stepDown()
         self.current_term = max(candidate_term, self.current_term)
         grant_vote = (not self.voted_for or self.voted_for == candidate_id) and\
             candidate_log_index >= self.getLatest()[1]
         if grant_vote:
+            self.stepDown()
             self.voted_for = candidate_id
-            self.resetElectionTimeout()
             logging.debug('DC-{} voted for DC-{} in term {}'
                           .format(self.datacenter_id,
                                   candidate_id, self.current_term))
@@ -236,6 +247,16 @@ class datacenter(object):
                                 prevEntry.index, prevEntry.term,
                                 self.log[self.nextIndices[center_id]:],
                                 self.commit_idx)
+
+    def handleShow(self):
+        """
+        display the state of datacenter
+        first line: current state
+        following lines: committed log
+        """
+        logging.info(self.total_ticket)
+        for entry in self.log:
+            logging.info(entry)
 
     def sendHeartbeat(self):
         last_log_term, last_log_idx = self.getLatest()

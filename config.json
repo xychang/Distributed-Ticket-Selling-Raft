@@ -6,6 +6,6 @@
     },
     "messageDelay": 1,
     "total_ticket": 5,
-    "T": 30,
+    "T": 10,
     "heartbeat_timeout": 5
 }

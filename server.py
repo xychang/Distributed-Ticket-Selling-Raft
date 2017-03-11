@@ -149,9 +149,12 @@ class server(object):
             #         # addr = (host, port)
             #         # self.all_socket[port].connect(addr)
             #         self.sendMessage(self.dc.datacenters[center_id], content)
-            logging.debug("--> {0}. {1}".format(message_type, content))
+            logging.info("--> {0}. {1}".format(message_type, content))
             self.dc.handleBuy(*json.loads('[%s]' % content))
         # 2. show
+        elif message_type == 'SHOW':
+            logging.info("--> {0}. {1}".format(message_type, content))
+            self.dc.handleShow()
         # 3. change
 
 
@@ -174,7 +177,7 @@ class server(object):
                 for line in msg.split('\n'):
                     if len(line) == 0: continue
                     try:
-                        self.handleIncommingMessage(*line.split(':', 1))
+                        self.handleIncommingMessage(*line.strip().split(':', 1))
                     except Exception as e:
                         logging.error('Error with incomming message. {0} {1}'
                                       .format(e, line))
