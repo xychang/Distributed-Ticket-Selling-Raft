@@ -70,7 +70,7 @@ class server(object):
         # send reply to requestVote message
         def sendMsg():
             message = ('REQ_VOTE_REPLY:"{datacenter_id}",' +
-                       '{current_term},{grant_vote}').format(
+                       '{current_term},{grant_vote}\n').format(
                         datacenter_id=self.center_id,
                         current_term=current_term,
                         grant_vote=json.dumps(grant_vote))
@@ -82,7 +82,7 @@ class server(object):
         def sendMsg():
             message = ('APPEND:"{datacenter_id}",{current_term},' +
                        '{prev_log_idx},{prev_log_term},{entries},' +
-                       '{commit_idx}').format(
+                       '{commit_idx}\n').format(
                            datacenter_id=self.center_id,
                            current_term=current_term,
                            prev_log_idx=prev_log_idx,
@@ -96,7 +96,7 @@ class server(object):
                          follower_last_index):
         def sendMsg():
             message = ('APPEND_REPLY:"{datacenter_id}",{current_term},' +
-                       '{success},{follower_last_index}').format(
+                       '{success},{follower_last_index}\n').format(
                            datacenter_id=self.center_id,
                            current_term=current_term,
                            success=json.dumps(success),

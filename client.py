@@ -29,18 +29,18 @@ def Request(port, message, c):
 
 def RequestTicket(port, buy_num, request_id, c):
     message = ('BUY:"{client_id}",{request_id},' +
-               '{ticket_count}').format(
+               '{ticket_count}\n').format(
                            client_id=client_id,
                            request_id=request_id,
                            ticket_count=buy_num)
     Request(port, message, c)
 
 def RequestShow(port, c):
-    Request(port, 'SHOW:', c)
+    Request(port, 'SHOW:\n', c)
 
 def RequestChange(port, c):
     # TODO: add functionality for config change
-    Request(port, 'CHANGE:XXXX', c)
+    Request(port, 'CHANGE:XXXX\n', c)
 
 def Interface_cmd(c):
     choice = True
