@@ -2,14 +2,15 @@ import logging
 import random
 import pickle
 from datacenter import LogEntry
+import json
 
-#CONFIG = json.load(open('config.json'))
-
-
-
+CONFIG = json.load(open('config.json'))
 
 
-log = [LogEntry(0, 0)]
+
+
+
+log = [LogEntry(0, 0, {'config':'single', 'data':CONFIG['datacenters']})]
 current_term = 0
 voted_for = None
 dictobj = {'current_term': current_term, 'voted_for': voted_for, 'log': log}

@@ -4,8 +4,8 @@
         "2": { "port": 12349 },
         "3": { "port": 12350 }
     },
-    "messageDelay": 1,
-    "total_ticket": 5,
-    "T": 10,
-    "heartbeat_timeout": 5
+    "messageDelay": 0,
+    "total_ticket": 100,
+    "T": 3,
+    "heartbeat_timeout": 1
 }

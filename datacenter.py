@@ -58,16 +58,9 @@ class datacenter(object):
 
         # keep a list of log entries
         # put a dummy entry in front
-<<<<<<< Updated upstream
-        # change the log to reflect the configuration
-        # make the configuration a log entry
-        self.log = [LogEntry(0, 0, {'config': 'single',
-                                    'data': CONFIG['datacenters']})]
-=======
         #self.log = [LogEntry(0, 0)]
         self.log = data['log']
 
->>>>>>> Stashed changes
 
         # record the index of the latest comitted entry
         # 0 means the dummy entry is already comitted
