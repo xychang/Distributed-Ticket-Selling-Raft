@@ -381,6 +381,8 @@ class datacenter(object):
         if self.isLeader():
             # if the datacenter was leader
             self.heartbeat_timer.cancel()
+        if new_leader != self.leader_id:
+            logging.info('leader become {}'.format(new_leader))
         self.leader_id = new_leader
         # need to restart election if the election failed
         self.resetElectionTimeout()
@@ -522,6 +524,8 @@ class datacenter(object):
                     if self.total_ticket >= ticket else 'Sorry, not enough tickets left')
             if self.total_ticket >= ticket:
                 self.total_ticket -= ticket
+                logging.info('{0} ticket sold to {1}'.format(
+                             ticket, entry.command['client_id']))
         elif entry.command and 'config' in entry.command:
             if entry.command['config'] == 'joint':
                 # when the joint command is committed, the leader should

@@ -38,9 +38,9 @@ def RequestTicket(port, buy_num, request_id, c):
 def RequestShow(port, c):
     Request(port, 'SHOW:\n', c)
 
-def RequestChange(port, c):
+def RequestChange(port, new_config, c):
     # TODO: add functionality for config change
-    Request(port, 'CHANGE:XXXX\n', c)
+    Request(port, 'CHANGE:%s\n' % new_config, c)
 
 def Interface_cmd(c):
     choice = True

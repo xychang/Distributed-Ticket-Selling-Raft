@@ -207,5 +207,5 @@ if __name__ == "__main__":
     logging.basicConfig(format='(DC-%s)' % sys.argv[1] +
                                ' %(asctime)s [%(levelname)s]:%(message)s',
                         datefmt='%I:%M:%S',
-                        level=logging.DEBUG)
+                        level=logging.INFO)
     main()
