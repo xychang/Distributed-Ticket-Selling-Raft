@@ -22,14 +22,12 @@ class server(object):
         self.ip = gethostbyname('')
         self.port = port
         self.center_id = center_id
-        logging.info('DC-{} server running at {:s}:{:4d}'
-                     .format(self.center_id, self.ip, self.port))
+        logging.info('server running at {:s}:{:4d}'.format(self.ip, self.port))
         try:
             self.listener = socket(AF_INET, SOCK_DGRAM)
             self.listener.bind((self.ip, self.port))
             #self.listener.listen(5) # Max connections
-            logging.info('DC-{} listener start successfully...'
-                         .format(self.center_id))
+            logging.info('listener start successfully...')
         except Exception as e:
             # socket create fail
             logging.warning("Socket create fail.{0}".format(e))
@@ -106,7 +104,7 @@ class server(object):
             self.sendMessage(self.dc.datacenters[target_id], message)
         Timer(CONFIG['messageDelay'], sendMsg).start()
 
-    def handleIncommingMessage(self, message_type, content):
+    def handleIncommingMessage(self, message_type, content, address):
         # handle incomming messages
         # Message types:
         # messages from servers
@@ -150,6 +148,10 @@ class server(object):
             #         # self.all_socket[port].connect(addr)
             #         self.sendMessage(self.dc.datacenters[center_id], content)
             logging.info("--> {0}. {1}".format(message_type, content))
+            self.dc.handleBuy(*tuple(json.loads('[%s]' % content))+address)
+        # 1.1. forwarded buy
+        elif message_type == 'BUY-FORWARD':
+            logging.info("--> {0}. {1}".format(message_type, content))
             self.dc.handleBuy(*json.loads('[%s]' % content))
         # 2. show
         elif message_type == 'SHOW':
@@ -177,7 +179,8 @@ class server(object):
                 for line in msg.split('\n'):
                     if len(line) == 0: continue
                     try:
-                        self.handleIncommingMessage(*line.strip().split(':', 1))
+                        self.handleIncommingMessage(
+                            *tuple(line.strip().split(':', 1))+(address, ))
                     except Exception as e:
                         logging.error('Error with incomming message. {0} {1}'
                                       .format(e, line))
@@ -194,7 +197,8 @@ def main():
     Server = server(sys.argv[1], port)
 
 if __name__ == "__main__":
-    logging.basicConfig(format='%(asctime)s [%(levelname)s]:%(message)s',
+    logging.basicConfig(format='(DC-%s)' % sys.argv[1] +
+                               ' %(asctime)s [%(levelname)s]:%(message)s',
                         datefmt='%I:%M:%S',
                         level=logging.DEBUG)
     main()

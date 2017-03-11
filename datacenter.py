@@ -38,7 +38,7 @@ class datacenter(object):
         we use datacenter_id instead of pid because it is potentially
         deployed on multiple servers, and many have the same pid
         """
-        logging.debug('DC-{} initialized'.format(datacenter_id))
+        logging.debug('initialized')
         self.datacenter_id = datacenter_id
         self.datacenters = CONFIG['datacenters']
         # update the datacenters, so that the id and port are all int
@@ -67,7 +67,7 @@ class datacenter(object):
         # become candidate after timeout
         self.election_timer = Timer(self.election_timeout, self.startElection)
         self.election_timer.start()
-        logging.debug('DC-{} started election countdown'.format(datacenter_id))
+        logging.debug('started election countdown')
 
         # used by leader only
         self.heartbeat_timeout = CONFIG['heartbeat_timeout']
@@ -90,8 +90,7 @@ class datacenter(object):
         # need to restart election if the election failed
         self.election_timer = Timer(self.election_timeout, self.startElection)
         self.election_timer.start()
-        logging.debug('DC-{} reset election countdown'
-                      .format(self.datacenter_id))
+        logging.debug('reset election countdown')
 
     def isLeader(self):
         """
@@ -116,15 +115,25 @@ class datacenter(object):
         self.votes = [self.datacenter_id]
         self.voted_for = self.datacenter_id
 
-        logging.debug('DC-{} become candidate for term {}'
-                      .format(self.datacenter_id, self.current_term))
+        logging.debug('become candidate for term {}'.format(self.current_term))
 
         # send RequestVote to all other servers
         # (index & term of last log entry)
         self.server.requestVote(self.current_term, self.getLatest()[0], \
                                 self.getLatest()[1])
 
-    def handleBuy(self, client_id, request_id, ticket_count):
+    def requestInLog(self, client_id, request_id):
+        for entry in self.log:
+            if not entry.command: continue
+            if 'client_id' in entry.command and \
+               client_id == entry.command['client_id'] and \
+               'request_id' in entry.command and \
+               request_id == entry.command['request_id']:
+                return True
+        return False
+
+    def handleBuy(self, client_id, request_id, ticket_count,
+                  client_ip, client_port):
         """
         Handle the request to buy ticket,
         for now, don't update state machine yet, just add an entry to log
@@ -133,20 +142,29 @@ class datacenter(object):
         :type ticket_count: int
         """
         if self.isLeader():
-            self.log.append(LogEntry(self.current_term, len(self.log),
-                                     {'client_id': client_id,
-                                      'request_id': request_id,
-                                      'ticket_count': ticket_count}))
-            self.sendHeartbeat()
+            # if the request is already in the list, ignore it
+            if not self.requestInLog(client_id, request_id):
+                self.log.append(LogEntry(self.current_term, len(self.log),
+                                         {'client_id': client_id,
+                                          'request_id': request_id,
+                                          'ticket_count': ticket_count,
+                                          'client_ip': client_ip,
+                                          'client_port': client_port}))
+                self.sendHeartbeat()
         else:
             # if there is a current leader, then send the request to
             # the leader, otherwise, ignore the request, the client
             # will eventually retry
-            message = ('BUY:"{client_id}",{request_id},' +
-                       '{ticket_count}').format(
+            # need a way to know who to send the success message to
+            message = ('BUY-FORWARD:"{client_id}",{request_id},' +
+                       '{ticket_count},"{client_ip}",{client_port}').format(
                                 client_id=client_id,
                                 request_id=request_id,
-                                ticket_count=ticket_count)
+                                ticket_count=ticket_count,
+                                client_ip=client_ip,
+                                client_port=client_port)
+            logging.info('forward ticket request to leader {}'
+                         .format(self.leader_id))
             if self.leader_id:
                 self.server.sendMessage(self.datacenters[self.leader_id],
                                         message)
@@ -172,9 +190,8 @@ class datacenter(object):
         if grant_vote:
             self.stepDown()
             self.voted_for = candidate_id
-            logging.debug('DC-{} voted for DC-{} in term {}'
-                          .format(self.datacenter_id,
-                                  candidate_id, self.current_term))
+            logging.debug('voted for DC-{} in term {}'
+                          .format(candidate_id, self.current_term))
         self.server.requestVoteReply(
             candidate_id, self.current_term, grant_vote)
 
@@ -182,8 +199,7 @@ class datacenter(object):
         """
         do things to be done as a leader
         """
-        logging.debug('DC-{} become leader for term {}'
-                      .format(self.datacenter_id, self.current_term))
+        logging.debug('become leader for term {}'.format(self.current_term))
 
         # no need to wait for heartbeat anymore
         self.election_timer.cancel()
@@ -204,8 +220,7 @@ class datacenter(object):
         self.heartbeat_timer.start()
 
     def stepDown(self, new_leader=None):
-        logging.debug('DC-{} update itself to term {}'
-                      .format(self.datacenter_id, self.current_term))
+        logging.debug('update itself to term {}'.format(self.current_term))
         # if candidate or leader, step down and acknowledge the new leader
         if self.isLeader():
             # if the datacenter was leader
@@ -226,9 +241,8 @@ class datacenter(object):
         """
         if vote_granted:
             self.votes.append(follower_id)
-            logging.debug('DC-{} get another vote in term {}, votes got: {}'
-                          .format(self.datacenter_id,
-                                  self.current_term, self.votes))
+            logging.debug('get another vote in term {}, votes got: {}'
+                          .format(self.current_term, self.votes))
 
             if not self.isLeader() and len(self.votes) > len(self.datacenters)/2:
                 self.becomeLeader()
@@ -316,7 +330,20 @@ class datacenter(object):
         commit a log entry
         :type entry: LogEntry
         """
-        logging.info('entry comitted! {}'.format(entry))
+        logging.info('entry committing! {}'.format(entry))
+        # check if the entry is a buy ticket entry
+        # if so, and if I am the leader, send a message to client about
+        # the operation being successful
+        if entry.command and 'ticket_count' in entry.command:
+            ticket = entry.command['ticket_count']
+            if self.isLeader():
+                self.server.sendMessage(
+                    {'port': entry.command['client_port']},
+                    ('Here is your tickets, remaining tickets %d' % (self.total_ticket - ticket))
+                    if self.total_ticket >= ticket else 'Sorry, not enough tickets left')
+            if self.total_ticket >= ticket:
+                self.total_ticket -= ticket
+
 
     def handleAppendEntry(self, leader_id, leader_term, leader_prev_log_idx,
                           leader_prev_log_term, entries, leader_commit_idx):
@@ -340,28 +367,24 @@ class datacenter(object):
             self.stepDown(leader_id)
             if my_prev_log_idx < leader_prev_log_idx \
                or self.log[leader_prev_log_idx].term != leader_prev_log_term:
-                logging.debug('DC-{} log inconsistent with leader at {}'
-                              .format(self.datacenter_id, leader_prev_log_idx))
+                logging.debug('log inconsistent with leader at {}'
+                              .format(leader_prev_log_idx))
                 success = False
             else:
                 # remove all entries going after leader's last entry
                 if my_prev_log_idx > leader_prev_log_idx:
                     self.log = self.log[:leader_prev_log_idx+1]
-                    logging.debug('DC-{} remove redundent logs after {}'
-                                  .format(self.datacenter_id,
-                                          leader_prev_log_idx))
+                    logging.debug('remove redundent logs after {}'
+                                  .format(leader_prev_log_idx))
                 # Append any new entries not already in the log
                 for entry in entries:
-                    logging.debug('DC-{} adding {} to log'
-                                  .format(self.datacenter_id, entry))
+                    logging.debug('adding {} to log'.format(entry))
                     self.log.append(entry)
                 # check the leader's committed idx
                 if leader_commit_idx > self.commit_idx:
                     map(self.commitEntry,
                         self.log[self.commit_idx+1:leader_commit_idx+1])
-                    logging.debug('DC-{} comitting upto {}'
-                                  .format(self.datacenter_id,
-                                          leader_commit_idx))
+                    logging.debug('comitting upto {}'.format(leader_commit_idx))
                     self.commit_idx = leader_commit_idx
                 success = True
         # reply along with the lastest log entry

@@ -5,14 +5,20 @@ import socket
 import datetime
 import sys
 import time
-
+import threading
 
 CONFIG = json.load(open('config.json'))
 
 client_id = sys.argv[1]
 
-def Request(port, message):
-    c = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+def Receive(c):
+    while True:
+        data, address = c.recvfrom(4096)
+        print(data)
+
+
+def Request(port, message, c):
     host = ''
     addr = (host, port)
     sent = c.sendto(message, addr)
@@ -21,22 +27,22 @@ def Request(port, message):
     # data, server = c.recvfrom(4096)
     # c.close()
 
-def RequestTicket(port, buy_num, request_id):
+def RequestTicket(port, buy_num, request_id, c):
     message = ('BUY:"{client_id}",{request_id},' +
                '{ticket_count}').format(
                            client_id=client_id,
                            request_id=request_id,
                            ticket_count=buy_num)
-    Request(port, message)
+    Request(port, message, c)
 
-def RequestShow(port):
-    Request(port, 'SHOW:')
+def RequestShow(port, c):
+    Request(port, 'SHOW:', c)
 
-def RequestChange(port):
+def RequestChange(port, c):
     # TODO: add functionality for config change
-    Request(port, 'CHANGE:XXXX')
+    Request(port, 'CHANGE:XXXX', c)
 
-def Interface_cmd():
+def Interface_cmd(c):
     choice = True
     request_id = 0
     while choice:
@@ -59,12 +65,13 @@ def Interface_cmd():
             command = raw_input('Command: buy {numberOfTicket} / show / change {param1, param2}?\t')
 
             if command.startswith('buy'):
-                RequestTicket(server_selected, int(command.lstrip('buy ')), request_id)
+                RequestTicket(server_selected, int(command.lstrip('buy ')),
+                              request_id, c)
                 request_id += 1
             elif command.startswith('show'):
-                RequestShow(server_selected)
+                RequestShow(server_selected, c)
             elif command.startswith('change'):
-                RequestChange(server_selected, command.lstrip('change '))
+                RequestChange(server_selected, command.lstrip('change '), c)
 
 
 
@@ -73,7 +80,13 @@ def main():
     print("Welcome to SANDLAB Ticket Office!")
     print("The current time is " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
     print("\n*********************************\n")
-    Interface_cmd()
+
+    c = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    t = threading.Thread(target=Receive, args = (c, ))
+    t.daemon = True
+    t.start()
+
+    Interface_cmd(c)
     exit()
 
 if __name__ == "__main__":
