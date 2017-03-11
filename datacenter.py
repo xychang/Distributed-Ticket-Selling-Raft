@@ -40,7 +40,7 @@ class datacenter(object):
         """
         logging.debug('initialized')
         self.datacenter_id = datacenter_id
-        self.datacenters = CONFIG['datacenters']
+        # self.datacenters = CONFIG['datacenters']
         # update the datacenters, so that the id and port are all int
         # self.datacenters = dict([(x, y) for x, y in self.datacenters.items()])
         self.total_ticket = CONFIG['total_ticket']
@@ -59,7 +59,7 @@ class datacenter(object):
 
         # record the index of the latest comitted entry
         # 0 means the dummy entry is already comitted
-        self.commit_idx = 0
+        self.commit_idx = -1
 
         # store the server object to be used for making requests
         self.server = server
@@ -68,8 +68,12 @@ class datacenter(object):
         self.election_timeout = random.uniform(CONFIG['T'], 2*CONFIG['T'])
 
         # become candidate after timeout
-        self.election_timer = Timer(self.election_timeout, self.startElection)
-        self.election_timer.start()
+        if self.datacenter_id in self.getAllCenterID():
+            self.election_timer = Timer(self.election_timeout, self.startElection)
+            self.election_timer.daemon = True
+            self.election_timer.start()
+        else:
+            self.election_timer = None
         logging.debug('started election countdown')
 
         # used by leader only
@@ -83,15 +87,18 @@ class datacenter(object):
         if self.heartbeat_timer:
             self.heartbeat_timer.cancel()
         self.heartbeat_timer = Timer(self.heartbeat_timeout, self.sendHeartbeat)
+        self.heartbeat_timer.daemon = True
         self.heartbeat_timer.start()
 
     def resetElectionTimeout(self):
         """
         reset election timeout
         """
-        self.election_timer.cancel()
+        if self.election_timer:
+            self.election_timer.cancel()
         # need to restart election if the election failed
         self.election_timer = Timer(self.election_timeout, self.startElection)
+        self.election_timer.daemon = True
         self.election_timer.start()
         logging.debug('reset election countdown')
 
@@ -135,11 +142,45 @@ class datacenter(object):
                 return True
         return False
 
+    def handleChange(self, config_msg):
+        """
+        Handle the request to change config
+        :type new_config: Object
+              - similar to that "datacenters" field in config.json
+        """
+        new_config = json.loads(config_msg)
+        if self.isLeader():
+            # add a joint config into logging
+            entry = self.getConfig()
+
+            for center_id in new_config:
+                if center_id not in self.loggedIndices and \
+                   center_id != self.datacenter_id:
+                    # initialize a record of nextIdx
+                    self.loggedIndices[center_id] = 0
+                    self.nextIndices[center_id] = self.getLatest()[1]+1
+
+            # only go to joint config if the current config is not joint
+            # otherwise, ignore the command
+            if entry['config'] == 'single':
+                self.log.append(LogEntry(self.current_term, len(self.log),
+                                         {'config': 'joint',
+                                          'data': [entry['data'], new_config]}))
+            self.sendHeartbeat()
+        else:
+            # if there is a current leader, then send the request to
+            # the leader
+            message = 'CHANGE:%s' % config_msg
+            logging.info('forward change request to leader {}'
+                         .format(self.leader_id))
+            if self.leader_id:
+                self.server.sendMessage(self.getMetaByID(self.leader_id),
+                                        message)
+
     def handleBuy(self, client_id, request_id, ticket_count,
                   client_ip, client_port):
         """
         Handle the request to buy ticket,
-        for now, don't update state machine yet, just add an entry to log
         :type client_id: str
         :type request_id: int
         :type ticket_count: int
@@ -172,23 +213,33 @@ class datacenter(object):
                 self.server.sendMessage(self.getMetaByID(self.leader_id),
                                         message)
 
-    def getConfig(self):
+    def getConfig(self, committed=False, ignore_last=False):
         """
         Get the most recent config in log
+        :type committed: bool
+              - whether we only consider single config that are committed
+        :type ignore_last: bool
+              - whether we ignore the latest committed entry
         :rtype: a log entry for config
         """
         # go back from the latest entry, find the most recent config entry
-        for entry in self.log[::-1]:
-            if 'config' in entry.command: break
+        for idx, entry in list(enumerate(self.log))[::-1]:
+            if 'config' in entry.command:
+                if not committed: break
+                if entry.command['config'] == 'joint': break
+                if self.commit_idx >= idx and not ignore_last: break
+        # print('committed: %s, ignore_last: %s, FETCHED config: %s' % (committed, ignore_last, entry.command))
         return entry.command
 
-    def getAllCenterID(self):
+    def getAllCenterID(self, committed=True, ignore_last=False):
         """
         Find out the id for all datacenters in the latest log entry
+        :type committed: bool
+              - whether we only consider single config that are committed
         :rtype: a list of id of all currently running datacenters
         """
         # go back from the latest entry, find the most recent config entry
-        entry = self.getConfig()
+        entry = self.getConfig(committed, ignore_last=ignore_last)
         if entry['config'] == 'single':
             return entry['data'].keys()
         # remove duplicate entries in the final list
@@ -197,15 +248,24 @@ class datacenter(object):
     def getMetaByID(self, target_id):
         """
         Given an id, find out the meta information about this datacenter
+        Note that this is not necessarily the latest config
+        This the new config is not committed, we may still need information
+        from the joint config
         :type target_id: str
         :rtype: Object containing meta data for the center
         """
-        entry = self.getConfig()
+        # get the latest committed single config or lastest join config
+        entry = self.getConfig(committed=True, ignore_last=True)
         if entry['config'] == 'single':
-            return entry['data'][target_id]
+            if target_id in entry['data']:
+                return entry['data'][target_id]
+            else:
+                return None
         if target_id in entry['data'][0]:
             return entry['data'][0][target_id]
-        return entry['data'][1][target_id]
+        if target_id in entry['data'][1]:
+            return entry['data'][1][target_id]
+        return None
 
     def enoughForLeader(self, votes):
         """
@@ -229,13 +289,13 @@ class datacenter(object):
         current configuration
         """
         entry = self.getConfig()
+        # the leader keep its own record updated to the newest
+        indices[self.datacenter_id] = len(self.log) - 1
+        # print('!!!!!', indices)
         if entry['config'] == 'single':
-            return sorted([indices[x] for x in entry['data']
-                          if x != self.datacenter_id])[(len(entry['data'])-1)/2]
-        maxOld = sorted([indices[x] for x in entry['data'][0]
-                         if x != self.datacenter_id])[(len(entry['data'][0])-1)/2]
-        maxNew = sorted([indices[x] for x in entry['data'][1]
-                         if x != self.datacenter_id])[(len(entry['data'][1])-1)/2]
+            return sorted([indices[x] for x in entry['data']])[(len(entry['data'])-1)/2]
+        maxOld = sorted([indices[x] for x in entry['data'][0]])[(len(entry['data'][0])-1)/2]
+        maxNew = sorted([indices[x] for x in entry['data'][1]])[(len(entry['data'][1])-1)/2]
         return min(maxOld, maxNew)
 
     def handleRequestVote(self, candidate_id, candidate_term,
@@ -247,6 +307,10 @@ class datacenter(object):
         :type candidate_log_term: int
         :type candidate_log_index: int
         """
+        if candidate_id not in self.getAllCenterID():
+            logging.warning('{} requested vote, but he is not in current config'
+                            .format(candidate_id))
+            return
         if candidate_term < self.current_term:
             self.server.requestVoteReply(
                 candidate_id, self.current_term, False)
@@ -268,7 +332,7 @@ class datacenter(object):
         """
         do things to be done as a leader
         """
-        logging.debug('become leader for term {}'.format(self.current_term))
+        logging.info('become leader for term {}'.format(self.current_term))
 
         # no need to wait for heartbeat anymore
         self.election_timer.cancel()
@@ -289,6 +353,7 @@ class datacenter(object):
 
         self.sendHeartbeat()
         self.heartbeat_timer = Timer(self.heartbeat_timeout, self.sendHeartbeat)
+        self.heartbeat_timer.daemon = True
         self.heartbeat_timer.start()
 
     def stepDown(self, new_leader=None):
@@ -313,7 +378,7 @@ class datacenter(object):
         """
         if vote_granted:
             self.votes.append(follower_id)
-            logging.debug('get another vote in term {}, votes got: {}'
+            logging.info('get another vote in term {}, votes got: {}'
                           .format(self.current_term, self.votes))
 
             if not self.isLeader() and self.enoughForLeader(self.votes):
@@ -344,10 +409,17 @@ class datacenter(object):
         for entry in self.log:
             logging.info(entry)
 
-    def sendHeartbeat(self):
-        last_log_term, last_log_idx = self.getLatest()
-
-        for center_id in self.getAllCenterID():
+    def sendHeartbeat(self, ignore_last=False):
+        """
+        Send heartbeat message to all pears in the latest configuration
+        if the latest is a new configuration that is not committed
+        go to the join configuration instead
+        :type ignore_last: bool
+              - this is used for the broadcast immediately after a new
+              config is committed. We need to send not only to sites
+              in the newly committed config, but also to the old ones
+        """
+        for center_id in self.getAllCenterID(ignore_last=ignore_last):
             if center_id != self.datacenter_id:
                 # send a heartbeat message to datacenter (center_id)
                 self.sendAppendEntry(center_id)
@@ -392,10 +464,11 @@ class datacenter(object):
             return
         # if we have something to commit
         # if majority_idx < self.commit_idx, do nothing
-        map(self.commitEntry, self.log[self.commit_idx+1:majority_idx+1])
         if majority_idx != self.commit_idx:
             logging.info('log committed upto {}'.format(majority_idx))
+        old_commit_idx = self.commit_idx
         self.commit_idx = max(self.commit_idx, majority_idx)
+        map(self.commitEntry, self.log[old_commit_idx+1:majority_idx+1])
 
     def commitEntry(self, entry):
         """
@@ -415,7 +488,29 @@ class datacenter(object):
                     if self.total_ticket >= ticket else 'Sorry, not enough tickets left')
             if self.total_ticket >= ticket:
                 self.total_ticket -= ticket
-
+        elif entry.command and 'config' in entry.command:
+            if entry.command['config'] == 'joint':
+                # when the joint command is committed, the leader should
+                # add a new config into log entry and broadcast it to all
+                # datacenteres
+                # for none leander, it doesn't change anything
+                if self.isLeader():
+                    self.log.append(LogEntry(self.current_term, len(self.log),
+                                             {'config': 'single',
+                                              'data': entry.command['data'][1]}))
+                    # send the updated message to all servers, including
+                    # the ones that are in the old configuration
+                    self.sendHeartbeat()
+            else:
+                if self.isLeader():
+                    self.sendHeartbeat(ignore_last=True)
+                # when a single config is committed, the datacenter should
+                # check whether it is in the new config
+                # if not, it need to retire itself
+                # print('---!!!!', self.getAllCenterID())
+                if self.datacenter_id not in self.getAllCenterID():
+                    logging.info('retire itself')
+                    exit(1)
 
     def handleAppendEntry(self, leader_id, leader_term, leader_prev_log_idx,
                           leader_prev_log_term, entries, leader_commit_idx):
@@ -428,7 +523,7 @@ class datacenter(object):
         :type leader_prev_log_idx: int
         :type leader_prev_log_term: int
         :type entries: List[LogEntry]
-               A heartbest is a meesage with [] is entries
+               A heartbeat is a meesage with [] is entries
         :type leader_commit_idx: int
         """
         _, my_prev_log_idx = self.getLatest()
@@ -454,10 +549,11 @@ class datacenter(object):
                     self.log.append(entry)
                 # check the leader's committed idx
                 if leader_commit_idx > self.commit_idx:
-                    map(self.commitEntry,
-                        self.log[self.commit_idx+1:leader_commit_idx+1])
-                    logging.debug('comitting upto {}'.format(leader_commit_idx))
+                    old_commit_idx = self.commit_idx
                     self.commit_idx = leader_commit_idx
+                    map(self.commitEntry,
+                        self.log[old_commit_idx+1:leader_commit_idx+1])
+                    logging.debug('comitting upto {}'.format(leader_commit_idx))
                 success = True
         # reply along with the lastest log entry
         # so that the leader will know how much to update the

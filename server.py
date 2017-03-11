@@ -41,6 +41,9 @@ class server(object):
         :type target_meta: e.g. { "port": 12348 }
         :type message: str
         """
+        if target_meta is None:
+            logging.warning('trying to sent to server not in config')
+            return
         peer_socket = socket(AF_INET, SOCK_DGRAM)
         host = ''
         port = target_meta["port"]
@@ -61,7 +64,7 @@ class server(object):
                 latest_log_term=latest_log_term,
                 latest_log_index=latest_log_index
             )
-            for center_id in self.dc.getAllCenterID():
+            for center_id in self.dc.getAllCenterID(committed=False):
                 if center_id != self.center_id:
                     self.sendMessage(self.dc.getMetaByID(center_id), message)
         Timer(CONFIG['messageDelay'], sendMsg).start()
@@ -158,8 +161,11 @@ class server(object):
             logging.info("--> {0}. {1}".format(message_type, content))
             self.dc.handleShow()
         # 3. change
-
-
+        elif message_type == 'CHANGE':
+            logging.info("--> {0}. {1}".format(message_type, content))
+            # the config should be a config json object
+            # similar to that "datacenters" field in config.json
+            self.dc.handleChange(content)
 
     def waitConnection(self):
         '''
@@ -193,8 +199,8 @@ class server(object):
 def main():
     logging.info("Start datacenter...")
     datacenter_cfg = CONFIG['datacenters']
-    port = datacenter_cfg[sys.argv[1]]['port']
-    Server = server(sys.argv[1], port)
+    # port = datacenter_cfg[sys.argv[1]]['port']
+    Server = server(sys.argv[1], int(sys.argv[2]))
 
 if __name__ == "__main__":
     logging.basicConfig(format='(DC-%s)' % sys.argv[1] +
