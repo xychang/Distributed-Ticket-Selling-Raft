@@ -6,6 +6,7 @@ import logging
 from socket import *
 import datacenter
 from threading import Timer
+import pickle
 
 CONFIG = json.load(open('config.json'))
 

@@ -6,6 +6,7 @@ from threading import Lock
 from threading import Timer
 import logging
 import random
+import pickle
 
 CONFIG = json.load(open('config.json'))
 
@@ -45,17 +46,28 @@ class datacenter(object):
         # self.datacenters = dict([(x, y) for x, y in self.datacenters.items()])
         self.total_ticket = CONFIG['total_ticket']
 
-        self.current_term = 0
-        self.voted_for = None
+        # get current_term, voted_for, log from the state.p
+        filename = 'state'+datacenter_id+'.pkl'
+        pkl_file = open(filename, 'rb')
+        data = pickle.load(pkl_file)
+
+        self.current_term = data['current_term']
+        self.voted_for = data['voted_for']
 
         self.role = 'follower'
 
         # keep a list of log entries
         # put a dummy entry in front
+<<<<<<< Updated upstream
         # change the log to reflect the configuration
         # make the configuration a log entry
         self.log = [LogEntry(0, 0, {'config': 'single',
                                     'data': CONFIG['datacenters']})]
+=======
+        #self.log = [LogEntry(0, 0)]
+        self.log = data['log']
+
+>>>>>>> Stashed changes
 
         # record the index of the latest comitted entry
         # 0 means the dummy entry is already comitted
@@ -124,6 +136,11 @@ class datacenter(object):
         self.current_term += 1
         self.votes = [self.datacenter_id]
         self.voted_for = self.datacenter_id
+        dictobj = {'current_term': self.current_term, 'voted_for': self.voted_for, 'log': self.log}
+        filename = "./state"+self.datacenter_id+'.pkl'
+        fileobj = open(filename, 'wb')
+        pickle.dump(dictobj, fileobj)
+        fileobj.close()
 
         logging.debug('become candidate for term {}'.format(self.current_term))
 
@@ -194,7 +211,11 @@ class datacenter(object):
                                           'ticket_count': ticket_count,
                                           'client_ip': client_ip,
                                           'client_port': client_port}))
-                self.sendHeartbeat()
+                dictobj = {'current_term': self.current_term, 'voted_for': self.voted_for, 'log': self.log}
+                filename = "./state"+self.datacenter_id+'.pkl'
+                fileobj = open(filename, 'wb')
+                pickle.dump(dictobj, fileobj)
+                fileobj.close()
         else:
             # if there is a current leader, then send the request to
             # the leader, otherwise, ignore the request, the client
@@ -325,6 +346,11 @@ class datacenter(object):
             self.voted_for = candidate_id
             logging.debug('voted for DC-{} in term {}'
                           .format(candidate_id, self.current_term))
+        dictobj = {'current_term': self.current_term, 'voted_for': self.voted_for, 'log': self.log}
+        filename = "./state"+self.datacenter_id+'.pkl'
+        fileobj = open(filename, 'wb')
+        pickle.dump(dictobj, fileobj)
+        fileobj.close()
         self.server.requestVoteReply(
             candidate_id, self.current_term, grant_vote)
 
@@ -368,6 +394,11 @@ class datacenter(object):
         # convert to follower, not sure what's needed yet
         self.role = 'follower'
         self.voted_for = None
+        dictobj = {'current_term': self.current_term, 'voted_for': self.voted_for, 'log': self.log}
+        filename = "./state"+self.datacenter_id+'.pkl'
+        fileobj = open(filename, 'wb')
+        pickle.dump(dictobj, fileobj)
+        fileobj.close()
 
     def handleRequestVoteReply(self, follower_id, follower_term, vote_granted):
         """
@@ -386,6 +417,11 @@ class datacenter(object):
         else:
             if follower_term > self.current_term:
                 self.current_term = follower_term
+                dictobj = {'current_term': self.current_term, 'voted_for': self.voted_for, 'log': self.log}
+                filename = "./state"+self.datacenter_id+'.pkl'
+                fileobj = open(filename, 'wb')
+                pickle.dump(dictobj, fileobj)
+                fileobj.close()
                 self.stepDown()
 
     def sendAppendEntry(self, center_id):
@@ -437,6 +473,11 @@ class datacenter(object):
         """
         if follower_term > self.current_term:
             self.current_term = follower_term
+            dictobj = {'current_term': self.current_term, 'voted_for': self.voted_for, 'log': self.log}
+            filename = "./state"+self.datacenter_id+'.pkl'
+            fileobj = open(filename, 'wb')
+            pickle.dump(dictobj, fileobj)
+            fileobj.close()
             self.stepDown()
             return
         # if I am no longer the leader, ignore the message
@@ -537,6 +578,7 @@ class datacenter(object):
                 logging.debug('log inconsistent with leader at {}'
                               .format(leader_prev_log_idx))
                 success = False
+
             else:
                 # remove all entries going after leader's last entry
                 if my_prev_log_idx > leader_prev_log_idx:
@@ -555,6 +597,11 @@ class datacenter(object):
                         self.log[old_commit_idx+1:leader_commit_idx+1])
                     logging.debug('comitting upto {}'.format(leader_commit_idx))
                 success = True
+            dictobj = {'current_term': self.current_term, 'voted_for': self.voted_for, 'log': self.log}
+            filename = "./state"+self.datacenter_id+'.pkl'
+            fileobj = open(filename, 'wb')
+            pickle.dump(dictobj, fileobj)
+            fileobj.close()
         # reply along with the lastest log entry
         # so that the leader will know how much to update the
         # nextIndices record
