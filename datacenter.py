@@ -52,7 +52,10 @@ class datacenter(object):
 
         # keep a list of log entries
         # put a dummy entry in front
-        self.log = [LogEntry(0, 0)]
+        # change the log to reflect the configuration
+        # make the configuration a log entry
+        self.log = [LogEntry(0, 0, {'config': 'single',
+                                    'data': CONFIG['datacenters']})]
 
         # record the index of the latest comitted entry
         # 0 means the dummy entry is already comitted
@@ -166,8 +169,74 @@ class datacenter(object):
             logging.info('forward ticket request to leader {}'
                          .format(self.leader_id))
             if self.leader_id:
-                self.server.sendMessage(self.datacenters[self.leader_id],
+                self.server.sendMessage(self.getMetaByID(self.leader_id),
                                         message)
+
+    def getConfig(self):
+        """
+        Get the most recent config in log
+        :rtype: a log entry for config
+        """
+        # go back from the latest entry, find the most recent config entry
+        for entry in self.log[::-1]:
+            if 'config' in entry.command: break
+        return entry.command
+
+    def getAllCenterID(self):
+        """
+        Find out the id for all datacenters in the latest log entry
+        :rtype: a list of id of all currently running datacenters
+        """
+        # go back from the latest entry, find the most recent config entry
+        entry = self.getConfig()
+        if entry['config'] == 'single':
+            return entry['data'].keys()
+        # remove duplicate entries in the final list
+        return list(set(entry['data'][0].keys() + entry['data'][1].keys()))
+
+    def getMetaByID(self, target_id):
+        """
+        Given an id, find out the meta information about this datacenter
+        :type target_id: str
+        :rtype: Object containing meta data for the center
+        """
+        entry = self.getConfig()
+        if entry['config'] == 'single':
+            return entry['data'][target_id]
+        if target_id in entry['data'][0]:
+            return entry['data'][0][target_id]
+        return entry['data'][1][target_id]
+
+    def enoughForLeader(self, votes):
+        """
+        Given a list of datacenters who voted, find out whether it
+        is enough to get a majority based on the current config
+        :rtype: bool
+        """
+        entry = self.getConfig()
+        if entry['config'] == 'single':
+            validVotes = len(set(entry['data'].keys()) & set(votes))
+            return validVotes > len(entry['data']) / 2
+        validVotesOld = len(set(entry['data'][0].keys()) & set(votes))
+        validVotesNew = len(set(entry['data'][1].keys()) & set(votes))
+        return validVotesOld > len(entry['data'][0]) / 2 and \
+               validVotesNew > len(entry['data'][1]) / 2
+
+    def maxQualifiedIndex(self, indices):
+        """
+        Given a dictionary of datacenters and the max index in their log
+        we find of the maximum index that has reached a majority in
+        current configuration
+        """
+        entry = self.getConfig()
+        if entry['config'] == 'single':
+            return sorted([indices[x] for x in entry['data']
+                          if x != self.datacenter_id])[(len(entry['data'])-1)/2]
+        maxOld = sorted([indices[x] for x in entry['data'][0]
+                         if x != self.datacenter_id])[(len(entry['data'][0])-1)/2]
+        maxNew = sorted([indices[x] for x in entry['data'][1]
+                         if x != self.datacenter_id])[(len(entry['data'][1])-1)/2]
+        return min(maxOld, maxNew)
 
     def handleRequestVote(self, candidate_id, candidate_term,
                           candidate_log_term, candidate_log_index):
@@ -207,12 +276,15 @@ class datacenter(object):
         self.role = 'leader'
         self.leader_id = self.datacenter_id
         # keep track of the entries known to be logged in each data center
+        # note that when we are in the transition phase
+        # we as the leader need to keep track of nodes in
+        # the old and the new config
         self.loggedIndices = dict([(center_id, 0)
-                                   for center_id in self.datacenters
+                                   for center_id in self.getAllCenterID()
                                    if center_id != self.datacenter_id])
         # initialize a record of nextIdx
         self.nextIndices = dict([(center_id, self.getLatest()[1]+1)
-                                 for center_id in self.datacenters
+                                 for center_id in self.getAllCenterID()
                                  if center_id != self.datacenter_id])
 
         self.sendHeartbeat()
@@ -244,7 +316,7 @@ class datacenter(object):
             logging.debug('get another vote in term {}, votes got: {}'
                           .format(self.current_term, self.votes))
 
-            if not self.isLeader() and len(self.votes) > len(self.datacenters)/2:
+            if not self.isLeader() and self.enoughForLeader(self.votes):
                 self.becomeLeader()
         else:
             if follower_term > self.current_term:
@@ -275,7 +347,7 @@ class datacenter(object):
     def sendHeartbeat(self):
         last_log_term, last_log_idx = self.getLatest()
 
-        for center_id in self.datacenters:
+        for center_id in self.getAllCenterID():
             if center_id != self.datacenter_id:
                 # send a heartbeat message to datacenter (center_id)
                 self.sendAppendEntry(center_id)
@@ -311,7 +383,7 @@ class datacenter(object):
         # committed entries
         self.loggedIndices[follower_id] = follower_last_index
         # find out the index most followers have reached
-        majority_idx = sorted(self.loggedIndices.values())[(len(self.datacenters)-1)/2]
+        majority_idx = self.maxQualifiedIndex(self.loggedIndices)
         logging.debug('the index logged by majority is {0}'
                       .format(majority_idx))
         # commit entries only when at least one entry in current term

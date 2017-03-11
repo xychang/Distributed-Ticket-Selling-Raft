@@ -61,9 +61,9 @@ class server(object):
                 latest_log_term=latest_log_term,
                 latest_log_index=latest_log_index
             )
-            for center_id in self.dc.datacenters:
+            for center_id in self.dc.getAllCenterID():
                 if center_id != self.center_id:
-                    self.sendMessage(self.dc.datacenters[center_id], message)
+                    self.sendMessage(self.dc.getMetaByID(center_id), message)
         Timer(CONFIG['messageDelay'], sendMsg).start()
 
     def requestVoteReply(self, target_id, current_term, grant_vote):
@@ -74,7 +74,7 @@ class server(object):
                         datacenter_id=self.center_id,
                         current_term=current_term,
                         grant_vote=json.dumps(grant_vote))
-            self.sendMessage(self.dc.datacenters[target_id], message)
+            self.sendMessage(self.dc.getMetaByID(target_id), message)
         Timer(CONFIG['messageDelay'], sendMsg).start()
 
     def appendEntry(self, target_id, current_term, prev_log_idx,
@@ -89,7 +89,7 @@ class server(object):
                            prev_log_term=prev_log_term,
                            entries=json.dumps([x.getVals() for x in entries]),
                            commit_idx=commit_idx)
-            self.sendMessage(self.dc.datacenters[target_id], message)
+            self.sendMessage(self.dc.getMetaByID(target_id), message)
         Timer(CONFIG['messageDelay'], sendMsg).start()
 
     def appendEntryReply(self, target_id, current_term, success,
@@ -101,7 +101,7 @@ class server(object):
                            current_term=current_term,
                            success=json.dumps(success),
                            follower_last_index=follower_last_index)
-            self.sendMessage(self.dc.datacenters[target_id], message)
+            self.sendMessage(self.dc.getMetaByID(target_id), message)
         Timer(CONFIG['messageDelay'], sendMsg).start()
 
     def handleIncommingMessage(self, message_type, content, address):
