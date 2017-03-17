@@ -137,10 +137,15 @@ class datacenter(object):
 
         logging.debug('become candidate for term {}'.format(self.current_term))
 
+        # handle the case where only one server is left
+        if not self.isLeader() and self.enoughForLeader(self.votes):
+            self.becomeLeader()
+
         # send RequestVote to all other servers
         # (index & term of last log entry)
         self.server.requestVote(self.current_term, self.getLatest()[0], \
                                 self.getLatest()[1])
+
 
     def requestInLog(self, client_id, request_id):
         for entry in self.log:
@@ -439,6 +444,7 @@ class datacenter(object):
         logging.info(self.total_ticket)
         for entry in self.log:
             logging.info(entry)
+        logging.info(self.role)
 
     def sendHeartbeat(self, ignore_last=False):
         """
